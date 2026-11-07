@@ -1,0 +1,94 @@
+# ============================================================
+# MediGraph AI — Central Configuration
+# ============================================================
+
+project:
+  name: "MediGraph AI"
+  version: "0.1.0"
+  description: "Intelligent Medical Knowledge Graph and GNN Platform"
+  seed: 42
+
+# ---- Paths (relative to project root) ----------------------
+paths:
+  data_raw:        "data/raw"
+  data_processed:  "data/processed"
+  data_sample:     "data/sample"
+  notebooks:       "notebooks"
+  checkpoints:     "artifacts/checkpoints"
+  predictions:     "artifacts/predictions"
+  metrics:         "artifacts/metrics"
+
+  # Processed artefacts
+  nodes_csv:           "data/processed/nodes.csv"
+  edges_csv:           "data/processed/edges.csv"
+  node_mapping_json:   "data/processed/node_mapping.json"
+  relation_mapping_json: "data/processed/relation_mapping.json"
+
+# ---- Dataset -----------------------------------------------
+dataset:
+  source: "PrimeKG"
+  primekg_url: "https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/IXA7BM"
+  node_types:
+    - disease
+    - drug
+    - gene
+    - protein
+    - phenotype
+    - pathway
+    - anatomy
+    - biological_process
+    - molecular_function
+    - cellular_component
+    - exposure
+
+# ---- Graph construction ------------------------------------
+graph:
+  min_entity_frequency: 1  # nodes with fewer edges are still kept
+  max_nodes: null           # null = no limit; set integer during development
+  max_edges: null
+
+# ---- Model (R-GCN) -----------------------------------------
+model:
+  name: "RGCN"
+  in_channels: 128          # input / initial embedding dimension
+  hidden_channels: 256
+  out_channels: 128         # node embedding dimension
+  num_layers: 2
+  dropout: 0.1
+  num_bases: 30             # basis decomposition for R-GCN
+
+  # Decoder
+  decoder: "DistMult"
+
+# ---- Training ----------------------------------------------
+training:
+  epochs: 200
+  learning_rate: 0.001
+  weight_decay: 1.0e-5
+  batch_size: 1024          # mini-batch size for edge sampling
+  negative_sampling_ratio: 1  # negative edges per positive edge
+  val_interval: 10          # validate every N epochs
+
+  # Edge-split ratios  (train / val / test)
+  train_ratio: 0.80
+  val_ratio:   0.10
+  test_ratio:  0.10
+
+# ---- Inference ---------------------------------------------
+inference:
+  top_k: 20                 # top-K predictions returned per query
+  score_threshold: 0.5      # minimum raw DistMult score
+
+# ---- Streamlit app -----------------------------------------
+app:
+  title: "MediGraph AI"
+  host: "0.0.0.0"
+  port: 8501
+  theme: "dark"
+  graph_max_display_nodes: 500   # cap nodes shown in visualisation
+
+# ---- Logging -----------------------------------------------
+logging:
+  level: "INFO"             # DEBUG | INFO | WARNING | ERROR
+  format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+

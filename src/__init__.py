@@ -1,0 +1,4 @@
+"""
+MediGraph AI — src package.
+"""
+

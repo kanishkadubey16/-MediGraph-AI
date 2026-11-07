@@ -1,0 +1,80 @@
+# ============================================================
+# MediGraph AI — .gitignore
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.pyo
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Raw & large datasets (never commit) ---
+data/raw/
+data/processed/
+# Allow sample data
+!data/sample/
+
+# --- Artifacts (model weights, predictions, metrics) ---
+artifacts/checkpoints/*.pt
+artifacts/checkpoints/*.pth
+artifacts/predictions/*.json
+artifacts/predictions/*.csv
+artifacts/metrics/*.json
+# Keep placeholder files
+!artifacts/checkpoints/.gitkeep
+!artifacts/predictions/.gitkeep
+!artifacts/metrics/.gitkeep
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Coverage & testing ---
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# --- Mypy / type checking ---
+.mypy_cache/
+.dmypy.json
+
+# --- Secrets & credentials ---
+*.env
+secrets.yaml
+credentials.json
+
