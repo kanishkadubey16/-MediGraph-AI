@@ -1,0 +1,9 @@
+{
+  "anatomy_protein_present": 0,
+  "disease_phenotype_positive": 1,
+  "disease_protein": 2,
+  "drug_protein": 3,
+  "indication": 4,
+  "protein_pathway": 5,
+  "protein_protein": 6
+}

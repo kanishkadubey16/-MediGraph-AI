@@ -44,10 +44,13 @@ artifacts/checkpoints/*.pth
 artifacts/predictions/*.json
 artifacts/predictions/*.csv
 artifacts/metrics/*.json
+artifacts/visualizations/*.html
 # Keep placeholder files
 !artifacts/checkpoints/.gitkeep
 !artifacts/predictions/.gitkeep
 !artifacts/metrics/.gitkeep
+!artifacts/visualizations/.gitkeep
+
 
 # --- OS ---
 .DS_Store
