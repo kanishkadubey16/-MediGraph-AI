@@ -403,8 +403,8 @@ class MediGraphModel(nn.Module):
         self,
         mp_edge_index: Tensor,
         mp_edge_type: Tensor,
-        pred_edge_index: Tensor,
-        pred_edge_type: Tensor,
+        pred_edge_index: Optional[Tensor] = None,
+        pred_edge_type: Optional[Tensor] = None,
     ) -> Tensor:
         """Full forward pass: encode then decode.
 
@@ -415,12 +415,12 @@ class MediGraphModel(nn.Module):
             dtype ``torch.long``.  Passed to the encoder.
         mp_edge_type : Tensor
             Message-passing edge types, shape ``(E,)``, dtype ``torch.long``.
-        pred_edge_index : Tensor
+        pred_edge_index : Optional[Tensor]
             Candidate edges to score (positive + negative samples),
-            shape ``(2, B)``, dtype ``torch.long``.
-        pred_edge_type : Tensor
+            shape ``(2, B)``, dtype ``torch.long``. Defaults to ``mp_edge_index``.
+        pred_edge_type : Optional[Tensor]
             Relation types for candidate edges, shape ``(B,)``,
-            dtype ``torch.long``.
+            dtype ``torch.long``. Defaults to ``mp_edge_type``.
 
         Returns
         -------
@@ -428,6 +428,11 @@ class MediGraphModel(nn.Module):
             Raw DistMult scores, shape ``(B,)``, dtype ``torch.float32``.
             Apply sigmoid externally to obtain probabilities / binary loss.
         """
+        if pred_edge_index is None:
+            pred_edge_index = mp_edge_index
+        if pred_edge_type is None:
+            pred_edge_type = mp_edge_type
+
         z: Tensor = self.encode(mp_edge_index, mp_edge_type)
         scores: Tensor = self.decode(z, pred_edge_index, pred_edge_type)
         return scores

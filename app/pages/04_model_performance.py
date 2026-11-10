@@ -287,3 +287,4 @@ with arch_cols[2]:
     render_metric_card("Basis Decomposition", f"{model_cfg.get('num_bases', 30)} Bases", "Weight sharing across relations", icon="🧱", color_accent="purple")
 with arch_cols[3]:
     render_metric_card("Decoder Architecture", "DistMult Bilinear", "score = sum(h * r * t)", icon="✨", color_accent="amber")
+

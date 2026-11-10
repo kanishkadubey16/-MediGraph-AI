@@ -235,3 +235,4 @@ if edge_rows:
     )
 else:
     st.info("No connections found for this entity within the selected filter.")
+

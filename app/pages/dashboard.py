@@ -12,3 +12,4 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # Execute the main dashboard implementation
 import app.pages.01_dashboard  # noqa: F401
+

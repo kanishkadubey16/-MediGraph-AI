@@ -11,3 +11,4 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 import app.pages.04_model_performance  # noqa: F401
+

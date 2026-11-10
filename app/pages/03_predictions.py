@@ -346,3 +346,4 @@ if run_btn or "last_predictions" in st.session_state:
     )
 else:
     st.info("👆 Configure query parameters above and click **'Run GNN Inference'** to predict candidate relationships.")
+

@@ -291,3 +291,4 @@ def render_pyvis_network(
 
     html_content = net.generate_html()
     components.html(html_content, height=height_px, scrolling=False)
+
