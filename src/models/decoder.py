@@ -111,8 +111,8 @@ class DistMultDecoder(nn.Module):
         self.rel_weight: nn.Parameter = nn.Parameter(
             torch.empty(num_relations, embedding_dim)
         )
-        nn.init.xavier_uniform_(self.rel_weight.unsqueeze(0)).squeeze_(0)
-        # xavier_uniform_ requires at least 2-D; we add/remove a batch dim.
+        nn.init.xavier_uniform_(self.rel_weight)
+
 
         log.info(
             "DistMultDecoder constructed: num_relations=%d, embedding_dim=%d",
@@ -160,10 +160,67 @@ class DistMultDecoder(nn.Module):
         scores: Tensor = (z_src * w_rel * z_tgt).sum(dim=-1)
         return scores
 
+    def score_candidates(
+        self,
+        head_idx: int,
+        relation_idx: int,
+        z: Tensor,
+    ) -> Tensor:
+        """Compute DistMult scores for all candidate tails against a query (head, relation).
+
+        Parameters
+        ----------
+        head_idx : int
+            Head node index in [0, num_nodes).
+        relation_idx : int
+            Relation type index in [0, num_relations).
+        z : Tensor
+            Node embeddings matrix of shape (num_nodes, embedding_dim).
+
+        Returns
+        -------
+        Tensor
+            Raw DistMult scores for all candidate tails, shape (num_nodes,).
+        """
+        h_emb = z[head_idx]                    # (D,)
+        w_rel = self.rel_weight[relation_idx]  # (D,)
+        hr = h_emb * w_rel                     # (D,)
+        return torch.matmul(z, hr)             # (num_nodes,)
+
+    def score_triples(
+        self,
+        heads: Tensor,
+        relations: Tensor,
+        tails: Tensor,
+        z: Tensor,
+    ) -> Tensor:
+        """Compute DistMult scores for a batch of triples (h, r, t).
+
+        Parameters
+        ----------
+        heads : Tensor
+            (B,) LongTensor of head IDs.
+        relations : Tensor
+            (B,) LongTensor of relation IDs.
+        tails : Tensor
+            (B,) LongTensor of tail IDs.
+        z : Tensor
+            (num_nodes, D) node embeddings.
+
+        Returns
+        -------
+        Tensor
+            (B,) raw DistMult scores.
+        """
+        edge_index = torch.stack([heads, tails], dim=0)
+        return self.forward(z, edge_index, relations)
+
+
     def reset_parameters(self) -> None:
         """Re-initialise relation weights with Xavier uniform."""
-        nn.init.xavier_uniform_(self.rel_weight.unsqueeze(0)).squeeze_(0)
+        nn.init.xavier_uniform_(self.rel_weight)
         log.info("DistMultDecoder parameters have been reset.")
+
 
     def _validate_inputs(
         self, z: Tensor, edge_index: Tensor, edge_type: Tensor
@@ -334,6 +391,13 @@ class MediGraphModel(nn.Module):
             Raw DistMult scores, shape ``(B,)``, dtype ``torch.float32``.
         """
         return self.decoder(z, edge_index, edge_type)
+
+    def score_candidates(
+        self, head_idx: int, relation_idx: int, z: Tensor
+    ) -> Tensor:
+        """Score candidate tails using the DistMult decoder."""
+        return self.decoder.score_candidates(head_idx, relation_idx, z)
+
 
     def forward(
         self,
@@ -605,3 +669,11 @@ def _get_random_seed() -> int:
         The initial seed of the default PyTorch random number generator.
     """
     return int(torch.initial_seed() & 0xFFFF_FFFF)
+
+
+# --------------------------------------------------------------------------- #
+# Aliases
+# --------------------------------------------------------------------------- #
+MedicalDistMultDecoder = DistMultDecoder
+MedicalRGCNModel = MediGraphModel
+

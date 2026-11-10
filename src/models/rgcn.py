@@ -381,3 +381,10 @@ class RGCNEncoder(nn.Module):
             f"num_bases={self.num_bases}, "
             f"dropout={self.dropout})"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Aliases
+# --------------------------------------------------------------------------- #
+MedicalRGCN = RGCNEncoder
+
