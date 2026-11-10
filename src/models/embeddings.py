@@ -203,3 +203,4 @@ class BiomedicalEmbeddings(nn.Module):
         """Reset all node and relation parameters."""
         self.node_embeddings.reset_parameters()
         self.relation_embeddings.reset_parameters()
+

@@ -138,28 +138,43 @@ def split_edges(
         mask = mask[perm]
 
         n = mask.numel()
-        n_train = max(1, round(train_ratio * n))
-        n_val   = max(1, round(val_ratio   * n))
-        # test gets the remainder to ensure no edges are dropped
-        n_test  = n - n_train - n_val
-        if n_test < 1:
-            # Edge case: not enough edges to populate all three splits.
-            # Prioritise train, then val; test gets at least 0 (may be empty).
-            n_test = max(0, n - n_train - n_val)
+        if n >= 3:
+            n_val = max(1, int(round(val_ratio * n)))
+            n_test = max(1, int(round(test_ratio * n)))
+            n_train = n - n_val - n_test
+            if n_train < 1:
+                n_train = 1
+                if n_val > n_test:
+                    n_val -= 1
+                else:
+                    n_test -= 1
+        elif n == 2:
+            n_train = 1
+            n_val = 1
+            n_test = 0
+        else:
+            n_train = 1
+            n_val = 0
+            n_test = 0
 
         train_indices.append(mask[:n_train])
-        val_indices.append(  mask[n_train : n_train + n_val])
-        test_indices.append( mask[n_train + n_val :])
+        val_indices.append(mask[n_train : n_train + n_val])
+        test_indices.append(mask[n_train + n_val :])
 
         log.debug(
             "  Relation %d: total=%d  train=%d  val=%d  test=%d",
-            rel.item(), n, n_train, n_val, n - n_train - n_val,
+            rel.item(), n, n_train, n_val, n_test,
         )
 
     # Concatenate all per-type indices
-    train_idx = torch.cat(train_indices)
-    val_idx   = torch.cat(val_indices)
-    test_idx  = torch.cat(test_indices)
+    train_idx = torch.cat(train_indices) if train_indices else torch.empty(0, dtype=torch.long)
+    val_idx   = torch.cat(val_indices)   if val_indices   else torch.empty(0, dtype=torch.long)
+    test_idx  = torch.cat(test_indices)  if test_indices  else torch.empty(0, dtype=torch.long)
+
+    # Safety fallback if test set ended up empty but val has >= 2 edges
+    if test_idx.numel() == 0 and val_idx.numel() >= 2:
+        test_idx = val_idx[-1:]
+        val_idx = val_idx[:-1]
 
     def _gather(idx: torch.Tensor) -> dict[str, torch.Tensor]:
         return {

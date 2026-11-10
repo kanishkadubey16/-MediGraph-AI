@@ -296,7 +296,25 @@ def save_predictions(
     with open(out_file, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2, ensure_ascii=False)
 
-    log.info("[MediGraph] Predictions saved to '%s'", out_file)
+    # Also save as CSV for tabular analysis and reporting
+    csv_rows = []
+    for p in predictions:
+        csv_rows.append({
+            "query_node": query_node,
+            "relation": relation_type,
+            "target_node": p["target_name"],
+            "target_type": p["target_type"],
+            "score": p["score"],
+            "is_known_edge": p["is_known_edge"],
+            "rank": p["rank"],
+        })
+    df_preds = pd.DataFrame(csv_rows)
+    csv_file = predictions_dir / f"predictions_{timestamp}.csv"
+    latest_csv = predictions_dir / "predictions.csv"
+    df_preds.to_csv(csv_file, index=False)
+    df_preds.to_csv(latest_csv, index=False)
+
+    log.info("[MediGraph] Predictions saved to '%s' and '%s'", out_file, latest_csv)
     return out_file
 
 

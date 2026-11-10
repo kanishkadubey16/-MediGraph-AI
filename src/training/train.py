@@ -61,6 +61,7 @@ from src.utils.logger import configure_root_logger, get_logger  # noqa: E402
 from src.utils.seed import set_seed                          # noqa: E402
 from src.training.splitter import split_edges, sample_negatives  # noqa: E402
 from src.training.evaluator import LinkPredictionEvaluator   # noqa: E402
+from src.training.negative_sampling import TypedNegativeSampler, corrupt_triples  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -88,10 +89,11 @@ def _import_data_layer() -> tuple[Any, Any]:
 def _import_model_layer() -> tuple[Any, Any, Any]:
     """Import RGCNEncoder, DistMultDecoder, MediGraphModel (Member 2)."""
     try:
-        from src.models.rgcn import RGCNEncoder, MediGraphModel   # type: ignore
-        from src.models.decoder import DistMultDecoder             # type: ignore
+        from src.models.rgcn import RGCNEncoder
+        from src.models.decoder import DistMultDecoder, MediGraphModel
         return RGCNEncoder, DistMultDecoder, MediGraphModel
     except ImportError as exc:
+
         raise ImportError(
             f"[MediGraph] train: could not import model layer modules. "
             f"Ensure src/models/rgcn.py and src/models/decoder.py exist. "
@@ -178,13 +180,8 @@ def train(cfg: dict[str, Any]) -> None:
                 f"'{fpath}'.  Run `python src/data/preprocess.py` first."
             )
 
-    loader = MediGraphLoader(
-        nodes_path=nodes_path,
-        edges_path=edges_path,
-        node_mapping_path=nm_path,
-        relation_mapping_path=rm_path,
-    )
-    node_df, edge_df, node_mapping, rel_mapping = loader.load()
+    loader = MediGraphLoader()
+    node_df, edge_df, node_mapping, rel_mapping = loader.load_all(cfg)
     log.info("Loaded %d nodes and %d edges.", len(node_df), len(edge_df))
 
     num_nodes     = len(node_df)
@@ -193,8 +190,8 @@ def train(cfg: dict[str, Any]) -> None:
     # ------------------------------------------------------------------ #
     # 3. Build edge tensors
     # ------------------------------------------------------------------ #
-    builder    = GraphBuilder(node_df, edge_df, node_mapping, rel_mapping)
-    edge_index, edge_type = builder.build_edge_tensors()
+    builder = GraphBuilder(node_df, edge_df, rel_mapping)
+    edge_index, edge_type = builder.build_pyg_tensors(edge_df, rel_mapping)
     # edge_index: (2, E)  edge_type: (E,)
     log.info("Edge tensors built: edge_index=%s, edge_type=%s.",
              tuple(edge_index.shape), tuple(edge_type.shape))
@@ -278,8 +275,16 @@ def train(cfg: dict[str, Any]) -> None:
 
     checkpoints_dir = Path(cfg["paths"]["checkpoints"])
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    best_path = checkpoints_dir / "best_model.pt"
 
     evaluator = LinkPredictionEvaluator(num_nodes=num_nodes, device=device_str)
+    neg_sampler = TypedNegativeSampler(
+        edge_index=edge_index,
+        edge_type=edge_type,
+        num_nodes=num_nodes,
+        node_df=node_df,
+        seed=seed,
+    )
 
     best_val_mrr   = -1.0
     best_epoch     = 0
@@ -292,16 +297,12 @@ def train(cfg: dict[str, Any]) -> None:
     for epoch in epoch_iter:
         model.train()
 
-        # ---- Sample negatives for this epoch's training batch ----
-        # We sample from the full training partition; the caller can tune
-        # batch_size to control memory.  Here we process all train edges per
-        # epoch (standard for small-to-medium graphs).
-        neg_ei, neg_et = sample_negatives(
+        # ---- Sample negatives with entity-type constraints ----
+        neg_ei, neg_et = neg_sampler.sample(
             pos_edge_index=train_ei,
             pos_edge_type=train_et,
-            num_nodes=num_nodes,
             num_neg_per_pos=neg_ratio,
-            known_edges=known_edges,
+            type_constrained=True,
         )
 
         # ---- Forward pass ----
@@ -335,12 +336,11 @@ def train(cfg: dict[str, Any]) -> None:
                 # Val loss
                 z_val     = model.encode(train_ei, train_et)
                 vp_scores = model.decode(z_val, val_ei, val_et)
-                vn_ei, vn_et = sample_negatives(
+                vn_ei, vn_et = neg_sampler.sample(
                     pos_edge_index=val_ei,
                     pos_edge_type=val_et,
-                    num_nodes=num_nodes,
                     num_neg_per_pos=neg_ratio,
-                    known_edges=known_edges,
+                    type_constrained=True,
                 )
                 vn_scores = model.decode(z_val, vn_ei, vn_et)
                 val_loss = float(F.binary_cross_entropy_with_logits(
@@ -421,11 +421,29 @@ def train(cfg: dict[str, Any]) -> None:
                     best_val_mrr, best_epoch, best_path,
                 )
 
+    # Ensure best_path exists even if validation interval was larger than total epochs
+    if not best_path.exists():
+        _save_checkpoint(
+            path=best_path,
+            model=model,
+            optimizer=optimizer,
+            epoch=epochs,
+            train_loss=train_loss if 'train_loss' in locals() else 0.0,
+            val_loss=0.0,
+            val_mrr=0.0,
+            val_hits_at_10=0.0,
+            model_cfg=model_cfg,
+            num_nodes=num_nodes,
+            num_relations=num_relations,
+            seed=seed,
+        )
+        log.info("Saved final model state to '%s'.", best_path)
+
     # ------------------------------------------------------------------ #
     # 8. Final test evaluation
     # ------------------------------------------------------------------ #
     log.info("Loading best model from '%s' for test evaluation.", best_path)
-    best_ckpt = torch.load(best_path, map_location=device)
+    best_ckpt = torch.load(best_path, map_location=device, weights_only=False)
     model.load_state_dict(best_ckpt["model_state_dict"])
     model.eval()
 
@@ -443,12 +461,11 @@ def train(cfg: dict[str, Any]) -> None:
     with torch.no_grad():
         z_test = model.encode(train_ei, train_et)
         pos_sc = model.decode(z_test, test_ei, test_et)
-        tn_ei, tn_et = sample_negatives(
+        tn_ei, tn_et = neg_sampler.sample(
             pos_edge_index=test_ei,
             pos_edge_type=test_et,
-            num_nodes=num_nodes,
             num_neg_per_pos=1,
-            known_edges=known_edges,
+            type_constrained=True,
         )
         neg_sc = model.decode(z_test, tn_ei, tn_et)
 
@@ -491,9 +508,13 @@ def train(cfg: dict[str, Any]) -> None:
     metrics_dir.mkdir(parents=True, exist_ok=True)
     timestamp   = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     metrics_path = metrics_dir / f"metrics_{timestamp}.json"
+    latest_metrics_path = metrics_dir / "metrics.json"
+
     with open(metrics_path, "w", encoding="utf-8") as fh:
         json.dump(metrics_payload, fh, indent=2)
-    log.info("Metrics saved to '%s'.", metrics_path)
+    with open(latest_metrics_path, "w", encoding="utf-8") as fh:
+        json.dump(metrics_payload, fh, indent=2)
+    log.info("Metrics saved to '%s' and '%s'.", metrics_path, latest_metrics_path)
 
 
 # ---------------------------------------------------------------------------
@@ -571,8 +592,8 @@ def _save_checkpoint(
             "dropout":         float(model_cfg["dropout"]),
         },
         "random_seed":  seed,
-        "torch_version": torch.__version__,
-        "pyg_version":   pyg_version,
+        "torch_version": str(torch.__version__),
+        "pyg_version":   str(pyg_version),
     }
     torch.save(checkpoint, path)
 
