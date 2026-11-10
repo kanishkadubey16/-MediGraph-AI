@@ -245,16 +245,19 @@ class GraphBuilder:
 
     def build_homogeneous(
         self,
-        node_df: pd.DataFrame,
-        edge_df: pd.DataFrame,
-        rel_mapping: dict[str, int],
+        node_df: Optional[pd.DataFrame] = None,
+        edge_df: Optional[pd.DataFrame] = None,
+        rel_mapping: Optional[dict[str, int]] = None,
     ) -> tuple[Any, Any]:
         """
         Returns:
             edge_index: LongTensor shape (2, E)
             edge_type:  LongTensor shape (E,)
         Values are integer node IDs from node_df.node_id.
+        All arguments fall back to the values supplied at construction time.
         """
+        edge_df = edge_df if edge_df is not None else self.edge_df
+        rel_mapping = rel_mapping if rel_mapping is not None else self.relation_mapping
         return self.build_pyg_tensors(edge_df=edge_df, relation_mapping=rel_mapping)
 
     def to_pyg_data(

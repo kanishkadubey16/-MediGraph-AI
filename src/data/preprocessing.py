@@ -255,10 +255,10 @@ def clean_raw_primekg(
         "y_name", "y_type", "y_id", "y_source",
         "relation", "display_relation",
     ]
+    df = df.copy()
     for col in strip_cols:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
-    df = df.copy()
 
 
     # 3. Drop rows where x_type or y_type are not in our mapping
@@ -355,6 +355,7 @@ def build_nodes(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     all_entities = pd.concat([x_entities, y_entities], ignore_index=True)
 
     # Map PrimeKG raw types to our internal types
+    all_entities = all_entities.copy()
     all_entities["entity_type"] = all_entities["entity_type"].map(PRIMEKG_TYPE_MAP)
 
     # Cast source_id to string (IDs from different DBs may be int or str)
@@ -452,6 +453,7 @@ def build_edges(
         )
 
     # Cast to int (dropna converts to float)
+    edge_df = edge_df.copy()
     edge_df["source"] = edge_df["source"].astype(int)
     edge_df["target"] = edge_df["target"].astype(int)
 
