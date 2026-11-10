@@ -285,3 +285,4 @@ def corrupt_triples(
 
 # Alias for backward-compatibility with splitter.sample_negatives
 sample_negatives = corrupt_triples
+
