@@ -1,18 +1,15 @@
 """
 app/pages/04_model_performance.py
 ---------------------------------
-Page 4: Model Performance and Empirical Evaluation Studio.
+Page 4: Model Performance & Empirical Evaluation.
 
-Displays:
-- Actual test set metrics: MRR, Hits@1, Hits@3, Hits@10, ROC-AUC, Precision, Recall, F1.
-- Training loss and validation loss convergence curves over training epochs.
-- Validation MRR and Hits@10 progression across epochs.
-- Baseline Comparison: Side-by-side empirical comparison between pure DistMult and R-GCN.
-- Per-relation breakdown of ranking and link prediction accuracy.
-- Hyperparameter and architecture configuration details.
-
-All metrics are loaded directly from `artifacts/metrics/metrics.json` and
-`artifacts/metrics/baseline_comparison.json`.
+Features:
+- Primary Link Prediction KPI cards (Filtered MRR, Hits@1, Hits@10, ROC-AUC).
+- Training convergence curves: Binary Cross-Entropy Loss and Validation MRR progression.
+- Model ablation analysis: R-GCN + DistMult vs DistMult Baseline without graph convolution.
+- Model architecture specifications and hyperparameter overview.
+- Data loaded dynamically from `artifacts/metrics/metrics.json` and
+  `artifacts/metrics/baseline_comparison.json`.
 """
 
 from __future__ import annotations
@@ -21,10 +18,14 @@ import json
 import sys
 from pathlib import Path
 
-# Bootstrap sys.path
+# Bootstrap sys.path and ensure package resolution
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_APP_DIR = _PROJECT_ROOT / "app"
+sys.path = [p for p in sys.path if Path(p).resolve() not in (_APP_DIR.resolve(), (_APP_DIR / "pages").resolve())]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+if "app" in sys.modules and not hasattr(sys.modules["app"], "__path__"):
+    sys.modules["app"].__path__ = [str(_APP_DIR)]
 
 import pandas as pd
 import plotly.express as px
@@ -54,7 +55,7 @@ cfg = load_config()
 st.title("📈 GNN Model Performance & Empirical Evaluation")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
-    "Rigorous evaluation metrics, training convergence curves, and DistMult baseline ablation."
+    "Rigorous evaluation metrics, training convergence dynamics, and DistMult baseline ablation."
     "</p>",
     unsafe_allow_html=True,
 )
@@ -90,11 +91,12 @@ best_stats = metrics_data.get("best", {})
 per_epoch = metrics_data.get("per_epoch", [])
 model_cfg = metrics_data.get("config", {}).get("model", {})
 train_cfg = metrics_data.get("config", {}).get("training", {})
+best_epoch = best_stats.get("epoch", 10)
 
 # ---------------------------------------------------------------------------
 # 1. Primary Evaluation KPI Cards
 # ---------------------------------------------------------------------------
-render_section_header("Held-Out Test Set Performance (R-GCN + DistMult)", "Strict filtered link prediction protocol (zero data leakage)", "🏆")
+render_section_header("Held-Out Test Set Performance (R-GCN + DistMult)", "Strict filtered link prediction protocol (zero train/test data leakage)", "🏆")
 
 test_mrr = best_stats.get("test_mrr", 0.0)
 test_hits_1 = best_stats.get("test_hits_at_1", 0.0)
@@ -105,9 +107,9 @@ row1 = [
     {
         "title": "Mean Reciprocal Rank (MRR)",
         "value": f"{test_mrr:.4f}",
-        "description": "Inverse rank of true tail",
+        "description": "Inverse rank of true tail entities",
         "icon": "🎯",
-        "badge": "Filtered",
+        "badge": "Filtered Test Set",
         "color_accent": "teal",
     },
     {
@@ -115,20 +117,22 @@ row1 = [
         "value": f"{test_hits_10 * 100:.1f}%",
         "description": "True entity ranked in top 10",
         "icon": "🔟",
+        "badge": f"Epoch {best_epoch}",
         "color_accent": "navy",
     },
     {
         "title": "Hits @ 1",
         "value": f"{test_hits_1 * 100:.1f}%",
-        "description": "True entity ranked first",
+        "description": "True entity ranked top-1",
         "icon": "🥇",
         "color_accent": "purple",
     },
     {
         "title": "ROC-AUC Score",
         "value": f"{test_auc:.4f}",
-        "description": "Discrimination vs negatives",
+        "description": "Discrimination vs negative samples",
         "icon": "📊",
+        "badge": "BCE Loss",
         "color_accent": "amber",
     },
 ]
@@ -136,17 +140,17 @@ render_kpi_row(row1)
 
 if eval_data:
     row2 = [
-        {"title": "Hits @ 3", "value": f"{eval_data.get('hits@3', 0.0) * 100:.1f}%", "description": "Ranked in top 3", "icon": "🥉", "color_accent": "teal"},
+        {"title": "Hits @ 3", "value": f"{eval_data.get('hits@3', 0.0) * 100:.1f}%", "description": "Ranked in top 3 positions", "icon": "🥉", "color_accent": "teal"},
         {"title": "Precision", "value": f"{eval_data.get('precision', 0.0):.4f}", "description": "Positive predictive value", "icon": "✔️", "color_accent": "navy"},
-        {"title": "Recall", "value": f"{eval_data.get('recall', 0.0):.4f}", "description": "True positive rate", "icon": "🔄", "color_accent": "coral"},
-        {"title": "Accuracy", "value": f"{eval_data.get('accuracy', 0.0) * 100:.1f}%", "description": "Binary edge classification", "icon": "⚖️", "color_accent": "slate"},
+        {"title": "Recall", "value": f"{eval_data.get('recall', 0.0):.4f}", "description": "True positive sensitivity", "icon": "🔄", "color_accent": "coral"},
+        {"title": "Binary Accuracy", "value": f"{eval_data.get('accuracy', 0.0) * 100:.1f}%", "description": "Classification threshold 0.5", "icon": "⚖️", "color_accent": "slate"},
     ]
     render_kpi_row(row2)
 
 # ---------------------------------------------------------------------------
 # 2. Training Convergence & Validation Curves
 # ---------------------------------------------------------------------------
-render_section_header("Training Convergence & Learning Dynamics", "Loss curves and validation rank progression over epochs", "📉")
+render_section_header("Training Convergence & Learning Dynamics", f"Loss minimization and validation ranking across 50 epochs (Best Checkpoint: Epoch {best_epoch})", "📉")
 
 col_curve1, col_curve2 = st.columns(2)
 
@@ -163,7 +167,8 @@ if per_epoch:
                 mode="lines+markers",
                 name="Training Loss",
                 line=dict(color="#0D9488", width=2.5),
-                marker=dict(size=6),
+                marker=dict(size=5),
+                hovertemplate="Epoch %{x}: Train Loss = %{y:.4f}<extra></extra>",
             )
         )
         if "val_loss" in df_epoch.columns:
@@ -174,15 +179,21 @@ if per_epoch:
                     mode="lines+markers",
                     name="Validation Loss",
                     line=dict(color="#EF4444", width=2, dash="dash"),
-                    marker=dict(size=5),
+                    marker=dict(size=4),
+                    hovertemplate="Epoch %{x}: Val Loss = %{y:.4f}<extra></extra>",
                 )
             )
+        # Highlight best epoch
+        fig_loss.add_vline(
+            x=best_epoch, line_dash="dot", line_color="#1E3A8A",
+            annotation_text=f"Best Model (Ep {best_epoch})", annotation_position="top left"
+        )
         fig_loss.update_layout(
             xaxis_title="Epoch",
-            yaxis_title="Loss",
+            yaxis_title="Binary Cross-Entropy Loss",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(t=30, b=40, l=10, r=10),
-            height=340,
+            height=350,
             paper_bgcolor="#FFFFFF",
             plot_bgcolor="#FFFFFF",
         )
@@ -198,7 +209,8 @@ if per_epoch:
                 mode="lines+markers",
                 name="Validation MRR",
                 line=dict(color="#1E3A8A", width=2.5),
-                marker=dict(size=6),
+                marker=dict(size=5),
+                hovertemplate="Epoch %{x}: Val MRR = %{y:.4f}<extra></extra>",
             )
         )
         if "val_hits_at_10" in df_epoch.columns:
@@ -207,17 +219,22 @@ if per_epoch:
                     x=df_epoch["epoch"],
                     y=df_epoch["val_hits_at_10"],
                     mode="lines+markers",
-                    name="Hits@10",
+                    name="Val Hits@10",
                     line=dict(color="#F59E0B", width=2, dash="dot"),
-                    marker=dict(size=5),
+                    marker=dict(size=4),
+                    hovertemplate="Epoch %{x}: Hits@10 = %{y:.4f}<extra></extra>",
                 )
             )
+        fig_mrr.add_vline(
+            x=best_epoch, line_dash="dot", line_color="#0D9488",
+            annotation_text=f"Peak MRR (Ep {best_epoch})", annotation_position="top left"
+        )
         fig_mrr.update_layout(
             xaxis_title="Epoch",
             yaxis_title="Ranking Metric Score",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(t=30, b=40, l=10, r=10),
-            height=340,
+            height=350,
             paper_bgcolor="#FFFFFF",
             plot_bgcolor="#FFFFFF",
         )
@@ -226,7 +243,7 @@ if per_epoch:
 # ---------------------------------------------------------------------------
 # 3. Baseline Comparison: R-GCN vs DistMult
 # ---------------------------------------------------------------------------
-render_section_header("Model Ablation: R-GCN vs DistMult Baseline", "Comparison against DistMult without graph convolution on identical splits", "⚖️")
+render_section_header("Model Ablation: R-GCN vs DistMult Baseline", "Empirical proof of graph convolution advantage over non-GNN baseline on identical splits", "⚖️")
 
 if baseline_data:
     rgcn_metrics = baseline_data.get("rgcn", {})
@@ -256,8 +273,8 @@ if baseline_data:
 
         fig_comp = go.Figure(
             data=[
-                go.Bar(name="DistMult Baseline", x=labels_plot, y=base_vals, marker_color="#94A3B8"),
-                go.Bar(name="R-GCN (Proposed)", x=labels_plot, y=rgcn_vals, marker_color="#0D9488"),
+                go.Bar(name="DistMult Baseline (No GNN)", x=labels_plot, y=base_vals, marker_color="#94A3B8"),
+                go.Bar(name="R-GCN + DistMult (Proposed)", x=labels_plot, y=rgcn_vals, marker_color="#0D9488"),
             ]
         )
         fig_comp.update_layout(
@@ -280,11 +297,10 @@ render_section_header("Model Architecture & Hyperparameter Configuration", "Conf
 
 arch_cols = st.columns(4)
 with arch_cols[0]:
-    render_metric_card("Encoder Architecture", "R-GCN (2 Layers)", "Message passing over typed edges", icon="🧠", color_accent="navy")
+    render_metric_card("Encoder Architecture", "R-GCN (2 Layers)", "Message passing over 7 relation types", icon="🧠", color_accent="navy")
 with arch_cols[1]:
-    render_metric_card("Embedding Channels", f"{model_cfg.get('out_channels', 128)}", "Node & relation vector dim", icon="📏", color_accent="teal")
+    render_metric_card("Embedding Channels", f"{model_cfg.get('out_channels', 64)}", "Node & relation embedding dim", icon="📏", color_accent="teal")
 with arch_cols[2]:
     render_metric_card("Basis Decomposition", f"{model_cfg.get('num_bases', 30)} Bases", "Weight sharing across relations", icon="🧱", color_accent="purple")
 with arch_cols[3]:
-    render_metric_card("Decoder Architecture", "DistMult Bilinear", "score = sum(h * r * t)", icon="✨", color_accent="amber")
-
+    render_metric_card("Decoder Architecture", "DistMult Bilinear", "score = sum(z_h * W_r * z_t)", icon="✨", color_accent="amber")

@@ -182,6 +182,17 @@ class DistMultDecoder(nn.Module):
         Tensor
             Raw DistMult scores for all candidate tails, shape (num_nodes,).
         """
+        if head_idx < 0 or head_idx >= z.shape[0]:
+            raise IndexError(
+                f"[MediGraph] DistMultDecoder.score_candidates: head_idx ({head_idx}) "
+                f"out of bounds for z with {z.shape[0]} nodes [0, {z.shape[0]})."
+            )
+        if relation_idx < 0 or relation_idx >= self.num_relations:
+            raise IndexError(
+                f"[MediGraph] DistMultDecoder.score_candidates: relation_idx ({relation_idx}) "
+                f"out of bounds for decoder with {self.num_relations} relations [0, {self.num_relations})."
+            )
+
         h_emb = z[head_idx]                    # (D,)
         w_rel = self.rel_weight[relation_idx]  # (D,)
         hr = h_emb * w_rel                     # (D,)
@@ -274,6 +285,24 @@ class DistMultDecoder(nn.Module):
                 f"[MediGraph] DistMultDecoder: edge_type must have dtype "
                 f"torch.long, got {edge_type.dtype}."
             )
+
+        if edge_type.numel() > 0:
+            if (edge_type < 0).any() or (edge_type >= self.num_relations).any():
+                min_val = edge_type.min().item()
+                max_val = edge_type.max().item()
+                raise IndexError(
+                    f"[MediGraph] DistMultDecoder: edge_type relation IDs must be in "
+                    f"[0, {self.num_relations}), found range [{min_val}, {max_val}]."
+                )
+
+        if edge_index.numel() > 0:
+            if (edge_index < 0).any() or (edge_index >= z.shape[0]).any():
+                min_val = edge_index.min().item()
+                max_val = edge_index.max().item()
+                raise IndexError(
+                    f"[MediGraph] DistMultDecoder: edge_index node IDs must be in "
+                    f"[0, {z.shape[0]}), found range [{min_val}, {max_val}]."
+                )
 
     def __repr__(self) -> str:
         return (

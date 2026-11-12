@@ -303,6 +303,102 @@ class TestDataQuality(unittest.TestCase):
         self.assertEqual(edge_index.shape[1], len(self.edge_df))
         self.assertEqual(edge_type.shape[0], len(self.edge_df))
 
+    # -----------------------------------------------------------------------
+    # 9. Missing Files Handling
+    # -----------------------------------------------------------------------
+    def test_missing_files_handling(self) -> None:
+        """Verify that attempting to load non-existent files raises useful FileNotFoundError."""
+        from src.data.preprocessing import load_raw_primekg
+        loader = MediGraphLoader()
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            loader.load_nodes("non_existent_directory/nodes.csv")
+        self.assertIn("not found", str(ctx.exception).lower())
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            loader.load_edges("non_existent_directory/edges.csv", node_df=self.node_df)
+        self.assertIn("not found", str(ctx.exception).lower())
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            load_raw_primekg("non_existent_directory/kg.csv")
+        self.assertIn("not found", str(ctx.exception).lower())
+
+    # -----------------------------------------------------------------------
+    # 10. Invalid and Non-Contiguous Node IDs
+    # -----------------------------------------------------------------------
+    def test_invalid_node_ids_detected(self) -> None:
+        """Verify that non-contiguous or gapped node IDs are rejected."""
+        loader = MediGraphLoader()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Gapped node IDs [0, 1, 3] instead of [0, 1, 2]
+            gapped_df = pd.DataFrame([
+                {"node_id": 0, "entity_name": "E1", "entity_type": "disease", "source_id": "S1"},
+                {"node_id": 1, "entity_name": "E2", "entity_type": "drug", "source_id": "S2"},
+                {"node_id": 3, "entity_name": "E3", "entity_type": "gene", "source_id": "S3"},
+            ])
+            p = Path(tmpdir) / "gapped_nodes.csv"
+            gapped_df.to_csv(p, index=False)
+            with self.assertRaises(ValueError) as ctx:
+                loader.load_nodes(str(p))
+            self.assertIn("contiguous", str(ctx.exception).lower())
+
+    # -----------------------------------------------------------------------
+    # 11. Tensor Shapes, Dtypes, and Value Bounds
+    # -----------------------------------------------------------------------
+    def test_tensor_shapes_and_dtypes(self) -> None:
+        """Verify PyG edge_index and edge_type shapes, dtypes, and range bounds."""
+        import torch
+        builder = GraphBuilder(
+            node_df=self.node_df,
+            edge_df=self.edge_df,
+            relation_mapping=self.relation_mapping,
+        )
+        edge_index, edge_type = builder.build_pyg_tensors()
+
+        # Dtype checks
+        self.assertEqual(edge_index.dtype, torch.int64)
+        self.assertEqual(edge_type.dtype, torch.int64)
+
+        # Shape checks
+        self.assertEqual(edge_index.shape, (2, len(self.edge_df)))
+        self.assertEqual(edge_type.shape, (len(self.edge_df),))
+
+        # Value bounds checks
+        num_nodes = len(self.node_df)
+        num_relations = len(self.relation_mapping)
+        self.assertTrue((edge_index >= 0).all())
+        self.assertTrue((edge_index < num_nodes).all())
+        self.assertTrue((edge_type >= 0).all())
+        self.assertTrue((edge_type < num_relations).all())
+
+    # -----------------------------------------------------------------------
+    # 12. Website-Ready Statistics
+    # -----------------------------------------------------------------------
+    def test_website_ready_statistics(self) -> None:
+        """Verify dynamic statistics calculated from the dataset for dashboard consumption."""
+        builder = GraphBuilder(
+            node_df=self.node_df,
+            edge_df=self.edge_df,
+            relation_mapping=self.relation_mapping,
+        )
+        stats = builder.get_graph_stats()
+
+        self.assertIn("num_connected_components", stats)
+        self.assertGreaterEqual(stats["num_connected_components"], 1)
+
+        self.assertIn("dataset_source", stats)
+        self.assertIn("PrimeKG", stats["dataset_source"])
+
+        self.assertIn("is_sample", stats)
+        self.assertIsInstance(stats["is_sample"], bool)
+
+        self.assertIn("degree_distribution", stats)
+        self.assertIsInstance(stats["degree_distribution"], dict)
+
+        self.assertIn("most_connected_entities", stats)
+        self.assertIsInstance(stats["most_connected_entities"], list)
+        self.assertGreater(len(stats["most_connected_entities"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

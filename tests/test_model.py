@@ -312,6 +312,115 @@ class TestGNNArchitecture(unittest.TestCase):
             z_loaded = loaded_model.encode(self.edge_index, self.edge_type)
             self.assertTrue(torch.allclose(z_orig, z_loaded, atol=1e-6))
 
+    # ----------------------------------------------------------------------- #
+    # 6. Invalid IDs & Bounds Checking Tests
+    # ----------------------------------------------------------------------- #
+
+    def test_invalid_relation_and_node_ids_raise(self) -> None:
+        """Verify that out-of-range relation and node IDs raise IndexError."""
+        # Relation ID out of range in encoder (num_relations is 4)
+        bad_rel = torch.tensor([0, 1, 99], dtype=torch.long)
+        bad_edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+        with self.assertRaises(IndexError):
+            self.encoder(bad_edge_index, bad_rel)
+
+        # Node ID out of range in encoder (num_nodes is 12)
+        bad_node_index = torch.tensor([[0, 1, 100], [1, 2, 0]], dtype=torch.long)
+        valid_rel = torch.tensor([0, 1, 2], dtype=torch.long)
+        with self.assertRaises(IndexError):
+            self.encoder(bad_node_index, valid_rel)
+
+        # Relation ID out of range in decoder
+        z = self.encoder(self.edge_index, self.edge_type)
+        with self.assertRaises(IndexError):
+            self.decoder(z, bad_edge_index, bad_rel)
+
+        # Out of range in score_candidates
+        with self.assertRaises(IndexError):
+            self.decoder.score_candidates(head_idx=999, relation_idx=0, z=z)
+        with self.assertRaises(IndexError):
+            self.decoder.score_candidates(head_idx=0, relation_idx=999, z=z)
+
+    # ----------------------------------------------------------------------- #
+    # 7. Device Handling & Multi-Layer Variations
+    # ----------------------------------------------------------------------- #
+
+    def test_cpu_execution_and_device(self) -> None:
+        """Explicitly verify CPU execution and device consistency."""
+        device = torch.device("cpu")
+        self.model.to(device)
+        edge_index = self.edge_index.to(device)
+        edge_type = self.edge_type.to(device)
+
+        z = self.model.encode(edge_index, edge_type)
+        self.assertEqual(z.device.type, "cpu")
+
+        scores = self.model.decode(z, edge_index, edge_type)
+        self.assertEqual(scores.device.type, "cpu")
+
+    def test_layer_depth_variations(self) -> None:
+        """Verify encoder functions properly with 1, 2, and 3 layers."""
+        for num_layers in [1, 2, 3]:
+            encoder = MedicalRGCN(
+                num_nodes=self.num_nodes,
+                num_relations=self.num_relations,
+                in_channels=self.in_channels,
+                hidden_channels=self.hidden_channels,
+                out_channels=self.out_channels,
+                num_layers=num_layers,
+                num_bases=2,
+            )
+            z = encoder(self.edge_index, self.edge_type)
+            self.assertEqual(z.shape, (self.num_nodes, self.out_channels))
+
+    # ----------------------------------------------------------------------- #
+    # 8. Real Graph Data Integration Test
+    # ----------------------------------------------------------------------- #
+
+    def test_real_processed_graph_integration(self) -> None:
+        """Verify model consumes real processed PrimeKG graph tensors."""
+        import json
+        import pandas as pd
+        from src.data.graph_builder import GraphBuilder
+
+        nodes_file = Path("data/processed/nodes.csv")
+        edges_file = Path("data/processed/edges.csv")
+        rel_map_file = Path("data/processed/relation_mapping.json")
+
+        if not (nodes_file.exists() and edges_file.exists() and rel_map_file.exists()):
+            self.skipTest("Processed data files not found for integration test.")
+
+        node_df = pd.read_csv(nodes_file)
+        edge_df = pd.read_csv(edges_file)
+        with open(rel_map_file, "r") as f:
+            rm = json.load(f)
+
+        builder = GraphBuilder(node_df, edge_df, rm)
+        real_ei, real_et = builder.build_pyg_tensors()
+
+        real_encoder = MedicalRGCN(
+            num_nodes=len(node_df),
+            num_relations=len(rm),
+            in_channels=32,
+            hidden_channels=32,
+            out_channels=32,
+            num_layers=2,
+            num_bases=len(rm),
+        )
+        real_decoder = MedicalDistMultDecoder(
+            num_relations=len(rm),
+            embedding_dim=32,
+        )
+        real_model = MedicalRGCNModel(real_encoder, real_decoder)
+        real_model.eval()
+
+        with torch.no_grad():
+            z = real_model.encode(real_ei, real_et)
+            self.assertEqual(z.shape, (len(node_df), 32))
+
+            scores = real_model.decode(z, real_ei, real_et)
+            self.assertEqual(scores.shape, (real_ei.shape[1],))
+            self.assertTrue(torch.isfinite(scores).all())
 
 
 if __name__ == "__main__":

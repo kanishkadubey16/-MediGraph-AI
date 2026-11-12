@@ -1,17 +1,15 @@
 """
 app/pages/03_predictions.py
 ---------------------------
-Page 3: Relational Graph Convolutional Network (R-GCN) Link Prediction Studio.
+Page 3: GNN Biomedical Link Prediction Studio.
 
 Features:
-- Select query source entity and target relationship type.
-- Optional candidate target entity type filter (e.g. only predict gene/protein associations).
-- Top-K candidate slider and minimum score threshold slider.
-- Executes real GNN inference via `src.inference.predict.predict_links`.
-- Visual differentiation:
-  * "✓ Known Edge" (validated relationship present in dataset)
-  * "✨ Novel Hypothesis" (GNN-predicted candidate link)
-- Subgraph visualization showing query node, existing neighbors, and predicted edges.
+- Live inference against trained 2-layer R-GCN + DistMult model checkpoint.
+- Query specification: Head entity, typed relation, and optional target type filter.
+- Quick query preset buttons (Alzheimer disease, Albuterol, Breast cancer, Asthma).
+- Real-time scoring using DistMult bilinear decoder: score(h, r, t) = z_h ⊙ W_r ⊙ z_t.
+- Visual comparison of existing dataset ground truth vs novel predicted hypotheses.
+- Interactive hypothesis subgraph with solid lines for existing edges and dashed amber lines for novel links.
 - Tabular ranked candidates with raw model affinity scores and CSV download.
 - Full medical safety disclaimers with transparent explanation of DistMult bilinear logits.
 """
@@ -21,12 +19,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Bootstrap sys.path
+# Bootstrap sys.path and ensure package resolution
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_APP_DIR = _PROJECT_ROOT / "app"
+sys.path = [p for p in sys.path if Path(p).resolve() not in (_APP_DIR.resolve(), (_APP_DIR / "pages").resolve())]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+if "app" in sys.modules and not hasattr(sys.modules["app"], "__path__"):
+    sys.modules["app"].__path__ = [str(_APP_DIR)]
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
@@ -59,7 +62,7 @@ cfg = load_config()
 st.title("🧬 GNN Biomedical Link Prediction Studio")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
-    "Infer potentially undiscovered medical relationships and drug targets using 2-layer R-GCN + DistMult."
+    "Infer potentially undiscovered medical relationships and candidate drug targets using 2-layer R-GCN + DistMult."
     "</p>",
     unsafe_allow_html=True,
 )
@@ -106,6 +109,38 @@ if model is None:
     st.stop()
 
 # ---------------------------------------------------------------------------
+# Quick Query Presets
+# ---------------------------------------------------------------------------
+st.markdown("##### 💡 Quick Exploration Presets")
+preset_col1, preset_col2, preset_col3, preset_col4 = st.columns(4)
+
+if "preset_head" not in st.session_state:
+    st.session_state["preset_head"] = "Alzheimer disease"
+if "preset_rel" not in st.session_state:
+    st.session_state["preset_rel"] = "disease_protein"
+
+with preset_col1:
+    if st.button("🧠 Alzheimer ➔ disease_protein", use_container_width=True):
+        st.session_state["preset_head"] = "Alzheimer disease"
+        st.session_state["preset_rel"] = "disease_protein"
+        st.session_state.pop("last_predictions", None)
+with preset_col2:
+    if st.button("💊 Albuterol ➔ drug_protein", use_container_width=True):
+        st.session_state["preset_head"] = "Albuterol"
+        st.session_state["preset_rel"] = "drug_protein"
+        st.session_state.pop("last_predictions", None)
+with preset_col3:
+    if st.button("🎗️ Breast Cancer ➔ indication", use_container_width=True):
+        st.session_state["preset_head"] = "breast cancer"
+        st.session_state["preset_rel"] = "indication"
+        st.session_state.pop("last_predictions", None)
+with preset_col4:
+    if st.button("🫁 Asthma ➔ phenotype", use_container_width=True):
+        st.session_state["preset_head"] = "asthma"
+        st.session_state["preset_rel"] = "disease_phenotype_positive"
+        st.session_state.pop("last_predictions", None)
+
+# ---------------------------------------------------------------------------
 # 1. Prediction Query Configuration
 # ---------------------------------------------------------------------------
 render_section_header("Inference Query Setup", "Select query head entity, relation type, and candidate filter", "⚙️")
@@ -113,9 +148,8 @@ render_section_header("Inference Query Setup", "Select query head entity, relati
 col_q1, col_q2, col_q3 = st.columns([2, 1.5, 1.5])
 
 with col_q1:
-    # Filter source entities by type
     all_entity_types = ["All Types"] + sorted(node_df["entity_type"].unique().tolist())
-    head_type_filter = st.selectbox("Head Entity Category:", all_entity_types, index=0)
+    head_type_filter = st.selectbox("Head Entity Category Filter:", all_entity_types, index=0)
 
     if head_type_filter == "All Types":
         candidate_heads = node_df.sort_values("entity_name")
@@ -123,7 +157,8 @@ with col_q1:
         candidate_heads = node_df[node_df["entity_type"] == head_type_filter].sort_values("entity_name")
 
     head_names = candidate_heads["entity_name"].tolist()
-    default_head_idx = head_names.index("Alzheimer disease") if "Alzheimer disease" in head_names else 0
+    pref_head = st.session_state.get("preset_head", "Alzheimer disease")
+    default_head_idx = head_names.index(pref_head) if pref_head in head_names else 0
 
     query_head_entity = st.selectbox(
         "Source Entity (Head):",
@@ -134,7 +169,8 @@ with col_q1:
 
 with col_q2:
     relation_options = sorted(list(rel_mapping.keys()))
-    default_rel_idx = relation_options.index("disease_protein") if "disease_protein" in relation_options else 0
+    pref_rel = st.session_state.get("preset_rel", "disease_protein")
+    default_rel_idx = relation_options.index(pref_rel) if pref_rel in relation_options else 0
     query_relation = st.selectbox(
         "Target Relationship Type:",
         relation_options,
@@ -143,7 +179,6 @@ with col_q2:
     )
 
 with col_q3:
-    # Candidate target type filter
     all_target_types = ["All Target Types"] + sorted(node_df["entity_type"].unique().tolist())
     target_type_filter = st.selectbox(
         "Candidate Target Type Filter:",
@@ -162,7 +197,7 @@ with col_ctrl2:
         "Score Threshold (Logit Filter):",
         min_value=-5.0,
         max_value=15.0,
-        value=0.0,
+        value=-2.0,
         step=0.5,
         help="Only display candidates with model logit score >= threshold.",
     )
@@ -186,10 +221,9 @@ if run_btn or "last_predictions" in st.session_state:
                 rel_mapping=rel_mapping,
                 edge_index=edge_index,
                 edge_type=edge_type,
-                top_k=top_k * 2,  # Fetch more to allow type filtering
+                top_k=top_k * 2,
                 score_threshold=score_threshold,
             )
-            # Apply target type filter if set
             if target_type_filter != "All Target Types":
                 preds = [p for p in preds if p["target_type"].lower() == target_type_filter.lower()]
             preds = preds[:top_k]
@@ -226,7 +260,7 @@ if run_btn or "last_predictions" in st.session_state:
         {
             "title": "Known Dataset Edges",
             "value": known_count,
-            "description": "Ground-truth true positives",
+            "description": "Ground-truth true positive facts",
             "icon": "✓",
             "badge": "Ground Truth",
             "color_accent": "teal",
@@ -247,8 +281,8 @@ if run_btn or "last_predictions" in st.session_state:
             "color_accent": "purple",
         },
     ]
-    st.columns(4)
-    for col, m in zip(st.columns(4), pred_kpis):
+    pred_cols = st.columns(4)
+    for col, m in zip(pred_cols, pred_kpis):
         with col:
             render_metric_card(
                 title=m["title"],
@@ -260,11 +294,55 @@ if run_btn or "last_predictions" in st.session_state:
             )
 
     # ---------------------------------------------------------------------------
-    # 4. Interactive Prediction Subgraph
+    # 4. Top Candidate Spotlight Banner
     # ---------------------------------------------------------------------------
-    render_section_header("Hypothesis Subnetwork Visualization", "Solid lines indicate existing edges; dashed amber lines show novel predicted links", "🕸️")
+    top_candidate = preds[0]
+    top_is_known = top_candidate["is_known_edge"]
+    top_badge_color = "#0D9488" if top_is_known else "#F59E0B"
+    top_badge_text = "Verified Ground Truth Fact" if top_is_known else "Novel GNN Hypothesis"
+    top_prob = 1.0 / (1.0 + np.exp(-float(top_candidate["score"])))
 
-    # Build local graph for visualization: Center Node + Neighbors + Top Predicted Edges
+    st.markdown(
+        f"""
+        <div style="
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-left: 5px solid {top_badge_color};
+            border-radius: 12px;
+            padding: 16px 22px;
+            margin: 16px 0 20px 0;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        ">
+            <div>
+                <span style="background: {top_badge_color}1A; color: {top_badge_color}; font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase;">
+                    Top-Ranked Target #1
+                </span>
+                <div style="color: #0F172A; font-size: 1.45rem; font-weight: 800; margin-top: 4px;">
+                    {query_info[0]} <span style="color: #64748B; font-weight: 400; font-size: 1.1rem;">➔ [{query_info[1]}] ➔</span> <strong style="color: #0F172A;">{top_candidate['target_name']}</strong>
+                </div>
+                <div style="color: #64748B; font-size: 0.82rem; margin-top: 2px;">
+                    Target Type: <strong>{top_candidate['target_type'].capitalize()}</strong> • Status: <strong>{top_badge_text}</strong>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div style="color: #64748B; font-size: 0.72rem; font-weight: 700; text-transform: uppercase;">Affinity Logit / Sigmoid</div>
+                <div style="color: #0F172A; font-size: 1.5rem; font-weight: 800;">{float(top_candidate['score']):.3f} <span style="font-size: 0.95rem; color: #0D9488;">({top_prob * 100:.1f}%)</span></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ---------------------------------------------------------------------------
+    # 5. Interactive Prediction Subgraph
+    # ---------------------------------------------------------------------------
+    render_section_header("Hypothesis Subnetwork Visualization", "Solid slate lines indicate existing verified edges; dashed amber lines show novel predicted links", "🕸️")
+
     center_id = node_mapping[query_info[0]]
     G_pred = nx.DiGraph()
     G_pred.add_node(
@@ -293,23 +371,26 @@ if run_btn or "last_predictions" in st.session_state:
         center_node_id=center_id,
         title=f"Predicted Relational Subgraph: ('{query_info[0]}', '{query_info[1]}', ?)",
         predicted_edges=predicted_edge_tuples,
-        height=540,
+        height=560,
     )
     st.plotly_chart(fig_pred, use_container_width=True)
 
     # ---------------------------------------------------------------------------
-    # 5. Candidate Ranking Table
+    # 6. Candidate Ranking Table
     # ---------------------------------------------------------------------------
     render_section_header("Ranked Candidate Table", "Rank-ordered candidates according to DistMult bilinear scoring", "📋")
 
     table_data = []
     for p in preds:
-        status_badge = "✓ Known Ground Truth" if p["is_known_edge"] else "✨ Novel Predicted Hypothesis"
+        score_val = float(p["score"])
+        prob_val = 1.0 / (1.0 + np.exp(-score_val))
+        status_badge = "✓ Ground Truth" if p["is_known_edge"] else "✨ Novel Hypothesis"
         table_data.append({
             "Rank": p["rank"],
             "Target Entity": p["target_name"],
             "Target Type": p["target_type"].capitalize(),
-            "Raw Affinity Score (Logit)": round(float(p["score"]), 4),
+            "Raw Affinity (Logit)": round(score_val, 4),
+            "Sigmoid Probability": f"{prob_val * 100:.1f}%",
             "Status": status_badge,
             "Source ID": p.get("target_source_id", "N/A"),
         })
@@ -324,7 +405,8 @@ if run_btn or "last_predictions" in st.session_state:
             "Rank": st.column_config.NumberColumn(width="small"),
             "Target Entity": st.column_config.TextColumn(width="medium"),
             "Target Type": st.column_config.TextColumn(width="small"),
-            "Raw Affinity Score (Logit)": st.column_config.NumberColumn(format="%.4f"),
+            "Raw Affinity (Logit)": st.column_config.NumberColumn(format="%.4f"),
+            "Sigmoid Probability": st.column_config.TextColumn(width="small"),
             "Status": st.column_config.TextColumn(width="medium"),
         },
     )
@@ -336,7 +418,6 @@ if run_btn or "last_predictions" in st.session_state:
         icon="ℹ️",
     )
 
-    # Download CSV button
     csv_bytes = df_preds_table.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📥 Download Predictions as CSV",
@@ -345,5 +426,4 @@ if run_btn or "last_predictions" in st.session_state:
         mime="text/csv",
     )
 else:
-    st.info("👆 Configure query parameters above and click **'Run GNN Inference'** to predict candidate relationships.")
-
+    st.info("👆 Select a preset above or configure custom parameters, then click **'Run GNN Inference'**.")

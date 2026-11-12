@@ -5,9 +5,10 @@ Page 1: MediGraph AI Executive Dashboard.
 
 Displays:
 - Summary KPI Cards (Total Nodes, Edges, Diseases, Drugs, Genes/Proteins, Phenotypes, Relation Categories)
-- Entity Type Distribution (Plotly Donut Chart)
+- Entity Type Distribution (Plotly Donut Chart with center total annotation)
 - Relationship Type Frequency Breakdown (Plotly Horizontal Bar Chart)
 - Graph Topological Properties (Density, Average Degree, Connected Components)
+- Biomedical Hub Entities Leaderboard with degree centralities
 - Real-time dataset health & schema integrity indicators
 
 Data is dynamically loaded from processed datasets (data/processed/).
@@ -18,10 +19,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Bootstrap sys.path
+# Bootstrap sys.path and ensure package resolution
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_APP_DIR = _PROJECT_ROOT / "app"
+sys.path = [p for p in sys.path if Path(p).resolve() not in (_APP_DIR.resolve(), (_APP_DIR / "pages").resolve())]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
+if "app" in sys.modules and not hasattr(sys.modules["app"], "__path__"):
+    sys.modules["app"].__path__ = [str(_APP_DIR)]
 
 import networkx as nx
 import pandas as pd
@@ -40,7 +45,7 @@ from app.components.metric_cards import (
 from app.components.graph_visualization import ENTITY_COLORS
 
 st.set_page_config(
-    page_title="Dashboard — MediGraph AI",
+    page_title="Executive Dashboard — MediGraph AI",
     page_icon="📊",
     layout="wide",
 )
@@ -53,7 +58,7 @@ cfg = load_config()
 st.title("📊 Biomedical Knowledge Graph Dashboard")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
-    "Real-time topological metrics and entity distribution of the PrimeKG medical graph partition."
+    "Real-time topological metrics, hub centrality rankings, and entity distribution of the PrimeKG medical graph partition."
     "</p>",
     unsafe_allow_html=True,
 )
@@ -84,13 +89,13 @@ total_phenotypes = type_counts.get("phenotype", 0)
 # ---------------------------------------------------------------------------
 # 1. Primary KPI Cards
 # ---------------------------------------------------------------------------
-render_section_header("Knowledge Graph Core Inventory", "Actual entity counts from processed PrimeKG partition", "🧬")
+render_section_header("Knowledge Graph Core Inventory", "Empirical counts from processed PrimeKG partition", "🧬")
 
 row1_metrics = [
     {
         "title": "Total Entities (Nodes)",
         "value": f"{total_nodes:,}",
-        "description": "Unique medical entities",
+        "description": "Unique multi-scale biomedical entities",
         "icon": "🌐",
         "badge": "Active",
         "color_accent": "navy",
@@ -98,7 +103,7 @@ row1_metrics = [
     {
         "title": "Total Relationships (Edges)",
         "value": f"{total_edges:,}",
-        "description": "Validated biomedical facts",
+        "description": "Ground-truth biomedical facts",
         "icon": "🔗",
         "badge": "Directed",
         "color_accent": "teal",
@@ -106,9 +111,9 @@ row1_metrics = [
     {
         "title": "Relation Categories",
         "value": f"{total_rel_types}",
-        "description": "Typed semantic relations",
+        "description": "Distinct semantic relation types",
         "icon": "🏷️",
-        "badge": "R-GCN Relations",
+        "badge": "R-GCN Classes",
         "color_accent": "purple",
     },
 ]
@@ -118,50 +123,50 @@ row2_metrics = [
     {
         "title": "Diseases",
         "value": f"{total_diseases:,}",
-        "description": "MONDO / Orphanet ontologies",
+        "description": f"{total_diseases / total_nodes * 100:.1f}% of graph • MONDO / Orphanet",
         "icon": "🦠",
         "color_accent": "coral",
     },
     {
         "title": "Drugs & Compounds",
         "value": f"{total_drugs:,}",
-        "description": "DrugBank approved agents",
+        "description": f"{total_drugs / total_nodes * 100:.1f}% of graph • DrugBank approved",
         "icon": "💊",
         "color_accent": "navy",
     },
     {
         "title": "Genes & Proteins",
         "value": f"{total_genes:,}",
-        "description": "NCBI Gene / UniProt targets",
+        "description": f"{total_genes / total_nodes * 100:.1f}% of graph • NCBI / UniProt targets",
         "icon": "🧬",
         "color_accent": "teal",
     },
     {
         "title": "Symptoms & Phenotypes",
         "value": f"{total_phenotypes:,}",
-        "description": "HPO clinical observations",
+        "description": f"{total_phenotypes / total_nodes * 100:.1f}% of graph • HPO signs & symptoms",
         "icon": "🩺",
         "color_accent": "amber",
     },
 ]
 render_kpi_row(row2_metrics)
 
-st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # 2. Charts: Distributions
 # ---------------------------------------------------------------------------
-render_section_header("Entity & Relationship Distributions", "Empirical breakdown of graph categories", "📈")
+render_section_header("Entity & Relationship Distributions", "Biomedical scale composition and edge frequencies", "📈")
 
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.markdown("#### Entity Type Distribution")
+    st.markdown("#### Entity Type Composition")
     df_entity_types = node_df["entity_type"].value_counts().reset_index()
     df_entity_types.columns = ["Entity Type", "Count"]
 
     color_seq = [
-        ENTITY_COLORS.get(t.lower(), ENTITY_COLORS["other"])
+        ENTITY_COLORS.get(t.lower(), ENTITY_COLORS.get("other", "#94A3B8"))
         for t in df_entity_types["Entity Type"]
     ]
 
@@ -170,18 +175,24 @@ with col_left:
             go.Pie(
                 labels=df_entity_types["Entity Type"].str.capitalize(),
                 values=df_entity_types["Count"],
-                hole=0.55,
+                hole=0.60,
                 marker=dict(colors=color_seq, line=dict(color="#FFFFFF", width=2)),
                 textinfo="label+percent",
-                hoverinfo="label+value+percent",
+                hovertemplate="<b>%{label}</b><br>Count: %{value} entities<br>Share: %{percent}<extra></extra>",
             )
         ]
     )
+    # Add center text
+    fig_donut.add_annotation(
+        text=f"<b>{total_nodes}</b><br><span style='font-size:11px;color:#64748B;'>Entities</span>",
+        x=0.5, y=0.5, showarrow=False,
+        font=dict(size=18, color="#0F172A", family="sans-serif")
+    )
     fig_donut.update_layout(
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5),
         margin=dict(t=20, b=30, l=10, r=10),
-        height=340,
+        height=360,
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
     )
@@ -189,7 +200,6 @@ with col_left:
 
 with col_right:
     st.markdown("#### Relationship Type Breakdown")
-    # Read relation counts from edges.csv
     edges_path = cfg["paths"]["edges_csv"]
     df_edges = pd.read_csv(edges_path)
     df_rel_counts = df_edges["relation"].value_counts().reset_index()
@@ -202,17 +212,21 @@ with col_right:
                 x=df_rel_counts["Frequency"],
                 y=df_rel_counts["Relationship"],
                 orientation="h",
-                marker=dict(color="#0D9488", line=dict(color="#115E59", width=1)),
+                marker=dict(
+                    color="#0D9488",
+                    line=dict(color="#0F766E", width=1),
+                ),
                 text=df_rel_counts["Frequency"],
-                textposition="auto",
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Edges: %{x}<extra></extra>",
             )
         ]
     )
     fig_bar.update_layout(
         xaxis_title="Edge Count",
         yaxis_title="",
-        margin=dict(t=20, b=40, l=10, r=10),
-        height=340,
+        margin=dict(t=20, b=40, l=10, r=30),
+        height=360,
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
     )
@@ -238,42 +252,77 @@ weakly_connected = nx.number_weakly_connected_components(G)
 
 topo_cols = st.columns(4)
 with topo_cols[0]:
-    render_metric_card("Graph Density", f"{density:.4f}", "Fraction of possible edges", icon="📐", color_accent="slate")
+    render_metric_card("Graph Density", f"{density:.4f}", "Edge fraction of complete graph", icon="📐", color_accent="slate")
 with topo_cols[1]:
-    render_metric_card("Avg Node In-Degree", f"{avg_in_degree:.2f}", "Incoming connections / node", icon="📥", color_accent="navy")
+    render_metric_card("Avg Node In-Degree", f"{avg_in_degree:.2f}", "Incoming relationships / node", icon="📥", color_accent="navy")
 with topo_cols[2]:
-    render_metric_card("Avg Node Out-Degree", f"{avg_out_degree:.2f}", "Outgoing connections / node", icon="📤", color_accent="teal")
+    render_metric_card("Avg Node Out-Degree", f"{avg_out_degree:.2f}", "Outgoing relationships / node", icon="📤", color_accent="teal")
 with topo_cols[3]:
-    render_metric_card("Weakly Connected Components", f"{weakly_connected}", "Disconnected graph clusters", icon="🧩", color_accent="amber")
+    render_metric_card("Connected Components", f"{weakly_connected}", f"{isolated_nodes} isolated nodes", icon="🧩", color_accent="purple")
 
-# Top Hub Entities Table
-st.markdown("#### Top Connected Hub Entities")
-node_degrees = []
-for n, d in G.degree():
-    data = G.nodes[n]
-    node_degrees.append({
-        "Node ID": n,
-        "Entity Name": data.get("entity_name", str(n)),
-        "Entity Type": str(data.get("entity_type", "")).capitalize(),
-        "In-Degree": G.in_degree(n),
-        "Out-Degree": G.out_degree(n),
-        "Total Degree": d,
+st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# 4. Top Hub Entities Leaderboard
+# ---------------------------------------------------------------------------
+render_section_header("Biomedical Hub Entities Leaderboard", "Entities with highest multi-relational connectivity in the network", "🏆")
+
+hub_records = []
+for node_id, data in G.nodes(data=True):
+    in_deg = G.in_degree(node_id)
+    out_deg = G.out_degree(node_id)
+    total_deg = in_deg + out_deg
+    name = data.get("entity_name", str(node_id))
+    etype = data.get("entity_type", "unknown")
+    source_id = node_df.loc[node_df["node_id"] == node_id, "source_id"].values[0] if "source_id" in node_df.columns else "N/A"
+    hub_records.append({
+        "Node ID": node_id,
+        "Entity Name": name,
+        "Category": etype.capitalize(),
+        "In-Degree": in_deg,
+        "Out-Degree": out_deg,
+        "Total Degree": total_deg,
+        "Ontology ID": source_id,
     })
 
-df_hubs = pd.DataFrame(node_degrees).sort_values("Total Degree", ascending=False).head(8)
-st.dataframe(
-    df_hubs,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Node ID": st.column_config.NumberColumn(width="small"),
-        "Entity Name": st.column_config.TextColumn(width="medium"),
-        "Entity Type": st.column_config.TextColumn(width="small"),
-        "Total Degree": st.column_config.ProgressColumn(
-            "Connection Degree",
-            format="%d",
-            min_value=0,
-            max_value=int(df_hubs["Total Degree"].max()),
-        ),
-    },
-)
+df_hubs = pd.DataFrame(hub_records).sort_values("Total Degree", ascending=False).reset_index(drop=True)
+
+col_hub1, col_hub2 = st.columns([3, 2])
+
+with col_hub1:
+    st.markdown("##### Top 10 Connected Entities")
+    top_10_hubs = df_hubs.head(10)
+    st.dataframe(
+        top_10_hubs[["Entity Name", "Category", "Total Degree", "In-Degree", "Out-Degree", "Ontology ID"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+with col_hub2:
+    st.markdown("##### Hub Degree Distribution")
+    fig_hub_bar = go.Figure(
+        data=[
+            go.Bar(
+                name="In-Degree",
+                x=top_10_hubs["Entity Name"],
+                y=top_10_hubs["In-Degree"],
+                marker_color="#3B82F6",
+            ),
+            go.Bar(
+                name="Out-Degree",
+                x=top_10_hubs["Entity Name"],
+                y=top_10_hubs["Out-Degree"],
+                marker_color="#0D9488",
+            ),
+        ]
+    )
+    fig_hub_bar.update_layout(
+        barmode="stack",
+        margin=dict(t=10, b=40, l=10, r=10),
+        height=280,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        xaxis=dict(tickangle=-35),
+    )
+    st.plotly_chart(fig_hub_bar, use_container_width=True)

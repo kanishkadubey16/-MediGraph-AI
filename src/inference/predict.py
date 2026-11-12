@@ -188,12 +188,28 @@ def predict_links(
     KeyError:
         If query_node or relation_type is unmapped.
     ValueError:
-        If model is in training mode.
+        If query_node or relation_type is empty/invalid, top_k is non-positive,
+        or model is in training mode.
     """
+    if not isinstance(model, torch.nn.Module):
+        raise TypeError(f"[MediGraph] Expected PyTorch Module for model, got {type(model)}.")
+
     if model.training:
         raise ValueError(
             "[MediGraph] Model must be in eval() mode before calling predict_links()."
         )
+
+    if not isinstance(query_node, str) or not query_node.strip():
+        raise ValueError("[MediGraph] Query entity name must be a non-empty string.")
+
+    if not isinstance(relation_type, str) or not relation_type.strip():
+        raise ValueError("[MediGraph] Relation type must be a non-empty string.")
+
+    if not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError(f"[MediGraph] top_k must be a positive integer, got {top_k}.")
+
+    if not isinstance(score_threshold, (int, float)):
+        raise ValueError(f"[MediGraph] score_threshold must be a float, got {score_threshold}.")
 
     if query_node not in node_mapping:
         raise KeyError(
@@ -209,6 +225,7 @@ def predict_links(
     head_id = node_mapping[query_node]
     rel_id = rel_mapping[relation_type]
     num_nodes = len(node_df)
+    effective_top_k = min(top_k, max(1, num_nodes - 1))
 
     device = next(model.parameters()).device
     edge_index = edge_index.to(device)
@@ -239,7 +256,7 @@ def predict_links(
     scores_np[head_id] = -1e9
 
     # Rank target nodes
-    top_indices = scores_np.argsort()[::-1][:top_k]
+    top_indices = scores_np.argsort()[::-1][:effective_top_k]
 
     node_lookup = node_df.set_index("node_id")
     results: list[dict[str, Any]] = []

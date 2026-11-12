@@ -372,20 +372,41 @@ class GraphBuilder:
                     "in_degree":    int(in_degrees[nid]),
                 })
 
+        # Connected components (NetworkX weakly & strongly connected)
+        G_temp = nx.DiGraph()
+        G_temp.add_nodes_from(node_df["node_id"].tolist())
+        for _, row in edge_df.iterrows():
+            G_temp.add_edge(int(row["source"]), int(row["target"]))
+        num_connected_components = int(nx.number_weakly_connected_components(G_temp))
+        num_strongly_connected = int(nx.number_strongly_connected_components(G_temp))
+
+        # Dataset provenance & sample determination
+        dataset_source = "PrimeKG (Precision Medicine Knowledge Graph)"
+        is_sample = bool(num_nodes < 100_000)
+
+        # Degree distribution breakdown (degree -> count of nodes)
+        deg_dist = {int(k): int(v) for k, v in total_degrees.value_counts().sort_index().items()}
+
         stats: dict[str, Any] = {
             "num_nodes":              num_nodes,
             "num_edges":              num_edges,
             "num_entity_types":       num_entity_types,
             "num_relation_types":     num_relation_types,
+            "num_connected_components": num_connected_components,
+            "num_strongly_connected": num_strongly_connected,
+            "dataset_source":          dataset_source,
+            "is_sample":               is_sample,
             "density":                round(density, 6),
             "isolated_nodes":         isolated_nodes,
             "isolated_pct":           round(100 * isolated_nodes / num_nodes, 2) if num_nodes > 0 else 0.0,
             "out_degree_stats":       _dist_stats(out_degrees),
             "in_degree_stats":        _dist_stats(in_degrees),
             "total_degree_stats":     _dist_stats(total_degrees),
+            "degree_distribution":     deg_dist,
             "entity_type_distribution": entity_dist,
             "relation_type_distribution": relation_dist,
             "top_10_hubs":            top10_nodes,
+            "most_connected_entities": top10_nodes,
         }
 
         log.info(

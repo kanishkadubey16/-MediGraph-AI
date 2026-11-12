@@ -369,6 +369,24 @@ class RGCNEncoder(nn.Module):
                 f"got {edge_type.dtype}."
             )
 
+        if edge_type.numel() > 0:
+            if (edge_type < 0).any() or (edge_type >= self.num_relations).any():
+                min_val = edge_type.min().item()
+                max_val = edge_type.max().item()
+                raise IndexError(
+                    f"[MediGraph] RGCNEncoder: edge_type relation IDs must be in "
+                    f"[0, {self.num_relations}), found range [{min_val}, {max_val}]."
+                )
+
+        if edge_index.numel() > 0:
+            if (edge_index < 0).any() or (edge_index >= self.num_nodes).any():
+                min_val = edge_index.min().item()
+                max_val = edge_index.max().item()
+                raise IndexError(
+                    f"[MediGraph] RGCNEncoder: edge_index node IDs must be in "
+                    f"[0, {self.num_nodes}), found range [{min_val}, {max_val}]."
+                )
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
