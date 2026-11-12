@@ -415,6 +415,9 @@ class GraphBuilder:
         )
         return stats
 
+    # Alias for API contract consistency
+    get_graph_statistics = get_graph_stats
+
     # -----------------------------------------------------------------------
     # 4. Save statistics report
     # -----------------------------------------------------------------------

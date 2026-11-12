@@ -1,0 +1,40 @@
+node_id,entity_name,entity_type,source_id
+0,ADRB2,gene,154
+1,APOE,gene,348
+2,APP,gene,351
+3,Albuterol,drug,DB00998
+4,Alzheimer disease,disease,MONDO:0004975
+5,Alzheimer disease pathway,pathway,WP2059
+6,Amlodipine,drug,DB00381
+7,BRCA1,gene,672
+8,BRCA2,gene,675
+9,CACNA1C,gene,775
+10,Cough,phenotype,HP:0012735
+11,Donepezil,drug,DB00843
+12,Dopaminergic synapse,pathway,WP4970
+13,Dyspnea,phenotype,HP:0002094
+14,ESR1,gene,2099
+15,Estrogen signaling pathway,pathway,WP2881
+16,HTR2A,gene,3356
+17,Hyperglycemia,phenotype,HP:0003074
+18,Levodopa,drug,DB01235
+19,MAPT,gene,4137
+20,Memory impairment,phenotype,HP:0002354
+21,Metformin,drug,DB01132
+22,PHYHIP,gene,9796
+23,PHYHIPL,gene,56992
+24,Palpitations,phenotype,HP:0001962
+25,Parkinson disease,disease,MONDO:0005180
+26,Risperidone,drug,DB00734
+27,SLC22A1,gene,6580
+28,SLC25A16,gene,9846
+29,SNCA,gene,6622
+30,Tamoxifen,drug,DB00675
+31,Tremor,phenotype,HP:0001337
+32,asthma,disease,MONDO:0004979
+33,breast cancer,disease,MONDO:0007254
+34,hippocampus,anatomy,UBERON:0002421
+35,hypertension,disease,MONDO:0005044
+36,lung,anatomy,UBERON:0002048
+37,substantia nigra,anatomy,UBERON:0002038
+38,type 2 diabetes mellitus,disease,MONDO:0005148

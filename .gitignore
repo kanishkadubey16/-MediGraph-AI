@@ -34,7 +34,12 @@ ENV/
 
 # --- Raw & large datasets (never commit) ---
 data/raw/
-data/processed/
+data/processed/*.large*
+data/processed/kg*.csv
+!data/processed/nodes.csv
+!data/processed/edges.csv
+!data/processed/node_mapping.json
+!data/processed/relation_mapping.json
 # Allow sample data
 !data/sample/
 
@@ -45,6 +50,10 @@ artifacts/predictions/*.json
 artifacts/predictions/*.csv
 artifacts/metrics/*.json
 artifacts/visualizations/*.html
+# Keep primary benchmark metric reports
+!artifacts/metrics/metrics.json
+!artifacts/metrics/baseline_comparison.json
+!artifacts/metrics/eval_metrics.json
 # Keep placeholder files
 !artifacts/checkpoints/.gitkeep
 !artifacts/predictions/.gitkeep

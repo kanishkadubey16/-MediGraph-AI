@@ -1,0 +1,88 @@
+{
+  "run_id": "2026-11-10T05:35:03",
+  "config": {
+    "project": {
+      "name": "MediGraph AI",
+      "version": "0.1.0",
+      "description": "Intelligent Medical Knowledge Graph and GNN Platform",
+      "seed": 42
+    },
+    "model": {
+      "name": "RGCN",
+      "in_channels": 128,
+      "hidden_channels": 256,
+      "out_channels": 128,
+      "num_layers": 2,
+      "dropout": 0.1,
+      "num_bases": 30,
+      "decoder": "DistMult"
+    },
+    "training": {
+      "epochs": 50,
+      "learning_rate": 0.001,
+      "weight_decay": 1e-05,
+      "batch_size": 1024,
+      "negative_sampling_ratio": 1,
+      "val_interval": 10,
+      "train_ratio": 0.8,
+      "val_ratio": 0.1,
+      "test_ratio": 0.1
+    }
+  },
+  "per_epoch": [
+    {
+      "epoch": 10,
+      "train_loss": 0.035072,
+      "val_loss": 1.387444,
+      "val_mrr": 0.077076,
+      "val_hits_at_1": 0.0,
+      "val_hits_at_10": 0.285714,
+      "val_hits_at_50": 1.0
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.005419,
+      "val_loss": 2.233437,
+      "val_mrr": 0.064524,
+      "val_hits_at_1": 0.0,
+      "val_hits_at_10": 0.142857,
+      "val_hits_at_50": 1.0
+    },
+    {
+      "epoch": 30,
+      "train_loss": 0.000882,
+      "val_loss": 2.880581,
+      "val_mrr": 0.063373,
+      "val_hits_at_1": 0.0,
+      "val_hits_at_10": 0.142857,
+      "val_hits_at_50": 1.0
+    },
+    {
+      "epoch": 40,
+      "train_loss": 0.001168,
+      "val_loss": 3.332881,
+      "val_mrr": 0.05872,
+      "val_hits_at_1": 0.0,
+      "val_hits_at_10": 0.285714,
+      "val_hits_at_50": 1.0
+    },
+    {
+      "epoch": 50,
+      "train_loss": 0.000843,
+      "val_loss": 3.428944,
+      "val_mrr": 0.05571,
+      "val_hits_at_1": 0.0,
+      "val_hits_at_10": 0.285714,
+      "val_hits_at_50": 1.0
+    }
+  ],
+  "best": {
+    "epoch": 10,
+    "val_mrr": 0.077076,
+    "test_mrr": 0.095428,
+    "test_hits_at_1": 0.0,
+    "test_hits_at_10": 0.285714,
+    "test_hits_at_50": 1.0,
+    "test_auc_roc": 0.816327
+  }
+}
