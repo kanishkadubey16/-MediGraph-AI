@@ -43,12 +43,14 @@ from app.components.metric_cards import (
     render_kpi_row,
     render_section_header,
     render_disclaimer_banner,
+    render_breadcrumb,
+    render_dual_info_cards,
 )
 from app.components.graph_visualization import ENTITY_COLORS
 
 try:
     st.set_page_config(
-        page_title="Executive Dashboard — MediGraph AI",
+        page_title="Dashboard — MediGraph AI",
         page_icon="📊",
         layout="wide",
     )
@@ -60,7 +62,9 @@ except Exception:
 # ---------------------------------------------------------------------------
 cfg = load_config()
 
-st.title("📊 Biomedical Knowledge Graph Dashboard")
+render_breadcrumb("Overview", "Executive Dashboard")
+
+st.title("📊 MediGraph AI — Executive Dashboard")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
     "Real-time topological metrics, hub centrality rankings, and entity distribution of the PrimeKG medical graph partition."
@@ -106,6 +110,24 @@ rel_mapping: dict[str, int] = st.session_state.rel_mapping
 total_nodes = len(node_df)
 total_edges = edge_index.shape[1]
 total_rel_types = len(rel_mapping)
+
+# Model & Dataset Summary Metadata (PRISM Reference Style)
+render_dual_info_cards(
+    model_rows=[
+        ("Encoder Architecture", "2-Layer R-GCN (30 Bases)"),
+        ("Decoder Architecture", "DistMult Bilinear Scoring"),
+        ("Latent Dimensions", "64 Embedding Channels"),
+        ("Optimization Loss", "BCE With Logits (Adam Optimizer)"),
+        ("Model Checkpoint", "artifacts/checkpoints/best_model.pt"),
+    ],
+    dataset_rows=[
+        ("Dataset Source", "Harvard PrimeKG (Precision Medicine KG)"),
+        ("Active Partition", "Curated Benchmark Sample"),
+        ("Total Entities", f"{total_nodes} Multi-Scale Nodes"),
+        ("Total Relationships", f"{total_edges} Directed Verified Edges"),
+        ("License", "Creative Commons Attribution 4.0 (CC BY 4.0)"),
+    ],
+)
 
 type_counts = node_df["entity_type"].value_counts().to_dict()
 total_diseases = type_counts.get("disease", 0)

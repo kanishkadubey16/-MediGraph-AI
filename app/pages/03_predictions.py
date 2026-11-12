@@ -42,6 +42,7 @@ from app.components.metric_cards import (
     render_metric_card,
     render_section_header,
     render_disclaimer_banner,
+    render_breadcrumb,
 )
 from app.components.graph_visualization import (
     build_plotly_subgraph,
@@ -50,7 +51,7 @@ from app.components.graph_visualization import (
 
 try:
     st.set_page_config(
-        page_title="GNN Prediction — MediGraph AI",
+        page_title="AI Predictions — MediGraph AI",
         page_icon="🧬",
         layout="wide",
     )
@@ -62,10 +63,12 @@ except Exception:
 # ---------------------------------------------------------------------------
 cfg = load_config()
 
-st.title("🧬 GNN Biomedical Link Prediction Studio")
+render_breadcrumb("Machine Learning", "AI Predictions")
+
+st.title("🧬 MediGraph AI — AI Predictions")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
-    "Infer potentially undiscovered medical relationships and candidate drug targets using 2-layer R-GCN + DistMult."
+    "Infer potentially undiscovered medical relationships and candidate drug targets using 2-layer R-GCN + DistMult (ByTek style)."
     "</p>",
     unsafe_allow_html=True,
 )

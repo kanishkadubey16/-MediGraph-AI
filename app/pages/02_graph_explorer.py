@@ -37,6 +37,7 @@ from app.components.metric_cards import (
     render_metric_card,
     render_section_header,
     render_disclaimer_banner,
+    render_breadcrumb,
 )
 from app.components.graph_visualization import (
     build_plotly_subgraph,
@@ -46,7 +47,7 @@ from app.components.graph_visualization import (
 
 try:
     st.set_page_config(
-        page_title="Graph Explorer — MediGraph AI",
+        page_title="Knowledge Graph Explorer — MediGraph AI",
         page_icon="🔍",
         layout="wide",
     )
@@ -58,10 +59,12 @@ except Exception:
 # ---------------------------------------------------------------------------
 cfg = load_config()
 
-st.title("🔍 Biomedical Knowledge Graph Explorer")
+render_breadcrumb("Analytics", "Knowledge Graph Explorer")
+
+st.title("🔍 MediGraph AI — Knowledge Graph Explorer")
 st.markdown(
     "<p style='color: #64748B; font-size: 1.05rem; margin-top: -10px;'>"
-    "Search any biomedical entity and interactively explore its multi-hop validated relational neighborhood."
+    "Search any biomedical entity and interactively explore its multi-hop validated relational neighborhood (BioBox style)."
     "</p>",
     unsafe_allow_html=True,
 )

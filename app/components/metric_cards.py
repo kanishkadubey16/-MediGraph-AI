@@ -157,3 +157,67 @@ def render_entity_pill(name: str, entity_type: str, source_id: Optional[str] = N
         f'</span>'
     )
 
+
+def render_breadcrumb(category: str, page_name: str) -> None:
+    """Render a sleek SaaS breadcrumb header (e.g., MediGraph AI > Overview > Executive Dashboard)."""
+    st.markdown(
+        f"""
+        <div style="color: #64748B; font-size: 0.82rem; font-weight: 500; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>MediGraph AI</span>
+            <span style="color: #CBD5E1;">›</span>
+            <span>{category}</span>
+            <span style="color: #CBD5E1;">›</span>
+            <span style="color: #0D9488; font-weight: 600;">{page_name}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_dual_info_cards(
+    model_rows: List[tuple[str, str]],
+    dataset_rows: List[tuple[str, str]],
+) -> None:
+    """Render side-by-side Model Information and Dataset Information cards (PRISM style)."""
+    col1, col2 = st.columns(2)
+    with col1:
+        rows_html = "".join([
+            f'<div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9; font-size: 0.84rem;">'
+            f'<span style="color: #64748B;">{k}</span>'
+            f'<strong style="color: #0F172A;">{v}</strong>'
+            f'</div>'
+            for k, v in model_rows
+        ])
+        st.markdown(
+            f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <span style="font-size: 1.1rem;">🧠</span>
+                    <h4 style="margin: 0; color: #0F172A; font-size: 0.96rem; font-weight: 700;">Model Information</h4>
+                </div>
+                {rows_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col2:
+        rows_html = "".join([
+            f'<div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #F1F5F9; font-size: 0.84rem;">'
+            f'<span style="color: #64748B;">{k}</span>'
+            f'<strong style="color: #0F172A;">{v}</strong>'
+            f'</div>'
+            for k, v in dataset_rows
+        ])
+        st.markdown(
+            f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px 22px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <span style="font-size: 1.1rem;">🌐</span>
+                    <h4 style="margin: 0; color: #0F172A; font-size: 0.96rem; font-weight: 700;">Dataset Information</h4>
+                </div>
+                {rows_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
