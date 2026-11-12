@@ -41,11 +41,14 @@ from app.components.metric_cards import (
     render_disclaimer_banner,
 )
 
-st.set_page_config(
-    page_title="Model Performance — MediGraph AI",
-    page_icon="📈",
-    layout="wide",
-)
+try:
+    st.set_page_config(
+        page_title="Model Performance — MediGraph AI",
+        page_icon="📈",
+        layout="wide",
+    )
+except Exception:
+    pass
 
 # ---------------------------------------------------------------------------
 # Initialise & Load Configuration / Metrics
@@ -138,14 +141,25 @@ row1 = [
 ]
 render_kpi_row(row1)
 
-if eval_data:
-    row2 = [
-        {"title": "Hits @ 3", "value": f"{eval_data.get('hits@3', 0.0) * 100:.1f}%", "description": "Ranked in top 3 positions", "icon": "🥉", "color_accent": "teal"},
-        {"title": "Precision", "value": f"{eval_data.get('precision', 0.0):.4f}", "description": "Positive predictive value", "icon": "✔️", "color_accent": "navy"},
-        {"title": "Recall", "value": f"{eval_data.get('recall', 0.0):.4f}", "description": "True positive sensitivity", "icon": "🔄", "color_accent": "coral"},
-        {"title": "Binary Accuracy", "value": f"{eval_data.get('accuracy', 0.0) * 100:.1f}%", "description": "Classification threshold 0.5", "icon": "⚖️", "color_accent": "slate"},
-    ]
-    render_kpi_row(row2)
+hits_3_raw = eval_data.get("hits@3") if eval_data else best_stats.get("test_hits_at_3")
+hits_3_display = f"{hits_3_raw * 100:.1f}%" if hits_3_raw is not None else "Not evaluated yet"
+
+prec_raw = eval_data.get("precision") if eval_data else None
+prec_display = f"{prec_raw:.4f}" if prec_raw is not None else "Not evaluated yet"
+
+rec_raw = eval_data.get("recall") if eval_data else None
+rec_display = f"{rec_raw:.4f}" if rec_raw is not None else "Not evaluated yet"
+
+acc_raw = eval_data.get("accuracy") if eval_data else None
+acc_display = f"{acc_raw * 100:.1f}%" if acc_raw is not None else "Not evaluated yet"
+
+row2 = [
+    {"title": "Hits @ 3", "value": hits_3_display, "description": "Ranked in top 3 positions", "icon": "🥉", "color_accent": "teal"},
+    {"title": "Precision", "value": prec_display, "description": "Positive predictive value", "icon": "✔️", "color_accent": "navy"},
+    {"title": "Recall", "value": rec_display, "description": "True positive sensitivity", "icon": "🔄", "color_accent": "coral"},
+    {"title": "Binary Accuracy", "value": acc_display, "description": "Classification threshold 0.5", "icon": "⚖️", "color_accent": "slate"},
+]
+render_kpi_row(row2)
 
 # ---------------------------------------------------------------------------
 # 2. Training Convergence & Validation Curves
@@ -291,7 +305,7 @@ else:
     st.info("Baseline comparison data not found. Run `python src/training/baseline.py` to generate side-by-side ablation.")
 
 # ---------------------------------------------------------------------------
-# 4. Architecture Specifications
+# 4. Architecture & Training Configuration Specifications
 # ---------------------------------------------------------------------------
 render_section_header("Model Architecture & Hyperparameter Configuration", "Configured R-GCN encoder and DistMult bilinear decoder specifications", "⚙️")
 
@@ -304,3 +318,39 @@ with arch_cols[2]:
     render_metric_card("Basis Decomposition", f"{model_cfg.get('num_bases', 30)} Bases", "Weight sharing across relations", icon="🧱", color_accent="purple")
 with arch_cols[3]:
     render_metric_card("Decoder Architecture", "DistMult Bilinear", "score = sum(z_h * W_r * z_t)", icon="✨", color_accent="amber")
+
+st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+
+col_cfg1, col_cfg2 = st.columns([1, 1])
+
+with col_cfg1:
+    st.markdown("#### Hyperparameter Configuration")
+    train_config_rows = [
+        {"Parameter": "Total Training Epochs", "Configured Value": f"{train_cfg.get('epochs', 50)}"},
+        {"Parameter": "Optimizer", "Configured Value": "Adam"},
+        {"Parameter": "Learning Rate", "Configured Value": f"{train_cfg.get('learning_rate', 0.01)}"},
+        {"Parameter": "Weight Decay (L2)", "Configured Value": f"{train_cfg.get('weight_decay', 1e-4)}"},
+        {"Parameter": "Negative Sampling Ratio", "Configured Value": f"{train_cfg.get('negative_sampling_ratio', 1)}:1 (Corrupt Tail/Head)"},
+        {"Parameter": "Batch Size", "Configured Value": f"{train_cfg.get('batch_size', 1024)}"},
+        {"Parameter": "Train / Val / Test Split", "Configured Value": f"{train_cfg.get('train_ratio', 0.8)*100:.0f}% / {train_cfg.get('val_ratio', 0.1)*100:.0f}% / {train_cfg.get('test_ratio', 0.1)*100:.0f}%"},
+        {"Parameter": "Random Seed", "Configured Value": f"{metrics_data.get('config', {}).get('project', {}).get('seed', 42)}"},
+    ]
+    st.dataframe(pd.DataFrame(train_config_rows), use_container_width=True, hide_index=True)
+
+with col_cfg2:
+    st.markdown("#### Training vs Evaluation Metrics")
+    st.markdown(
+        """
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; font-size: 0.85rem; line-height: 1.55; color: #334155;">
+            <p style="margin: 0 0 10px 0;">
+                <strong style="color: #0F172A;">📉 Training Loss (Binary Cross-Entropy):</strong><br>
+                Evaluates point-wise discrimination during mini-batch gradient descent. The model learns to output positive logits for verified PrimeKG triples and negative logits for corrupt negative samples.
+            </p>
+            <p style="margin: 0;">
+                <strong style="color: #0F172A;">🎯 Evaluation Metrics (Filtered MRR & Hits@K):</strong><br>
+                Link prediction requires ranking the true tail entity against <em>all</em> alternative entities in the graph for query <code>(h, r, ?)</code>. In filtered ranking, other known true triples are excluded from the candidate pool so legitimate medical associations are not penalized as false negatives.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

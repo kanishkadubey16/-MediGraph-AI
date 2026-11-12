@@ -44,11 +44,14 @@ from app.components.graph_visualization import (
     ENTITY_COLORS,
 )
 
-st.set_page_config(
-    page_title="Graph Explorer — MediGraph AI",
-    page_icon="🔍",
-    layout="wide",
-)
+try:
+    st.set_page_config(
+        page_title="Graph Explorer — MediGraph AI",
+        page_icon="🔍",
+        layout="wide",
+    )
+except Exception:
+    pass
 
 # ---------------------------------------------------------------------------
 # Initialise & Load Data

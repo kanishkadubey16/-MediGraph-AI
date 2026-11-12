@@ -48,11 +48,14 @@ from app.components.graph_visualization import (
     ENTITY_COLORS,
 )
 
-st.set_page_config(
-    page_title="GNN Prediction — MediGraph AI",
-    page_icon="🧬",
-    layout="wide",
-)
+try:
+    st.set_page_config(
+        page_title="GNN Prediction — MediGraph AI",
+        page_icon="🧬",
+        layout="wide",
+    )
+except Exception:
+    pass
 
 # ---------------------------------------------------------------------------
 # Initialise & Load Data
@@ -354,12 +357,16 @@ if run_btn or "last_predictions" in st.session_state:
 
     predicted_edge_tuples = []
     for p in preds:
-        tgt_id = p["target_id"]
+        tgt_id = p.get("target_node_id", p.get("target_id"))
+        tgt_source_id = p.get("target_source_id") or p.get("source_id")
+        if not tgt_source_id and tgt_id in node_df["node_id"].values:
+            tgt_source_id = str(node_df[node_df["node_id"] == tgt_id]["source_id"].iloc[0])
+
         G_pred.add_node(
             tgt_id,
             entity_name=p["target_name"],
             entity_type=p["target_type"],
-            source_id=p.get("target_source_id", "N/A"),
+            source_id=tgt_source_id or "N/A",
         )
         if p["is_known_edge"]:
             G_pred.add_edge(center_id, tgt_id, relation=query_info[1])
@@ -385,6 +392,10 @@ if run_btn or "last_predictions" in st.session_state:
         score_val = float(p["score"])
         prob_val = 1.0 / (1.0 + np.exp(-score_val))
         status_badge = "✓ Ground Truth" if p["is_known_edge"] else "✨ Novel Hypothesis"
+        tgt_id = p.get("target_node_id", p.get("target_id"))
+        sid = p.get("target_source_id") or p.get("source_id")
+        if not sid and tgt_id in node_df["node_id"].values:
+            sid = str(node_df[node_df["node_id"] == tgt_id]["source_id"].iloc[0])
         table_data.append({
             "Rank": p["rank"],
             "Target Entity": p["target_name"],
@@ -392,7 +403,7 @@ if run_btn or "last_predictions" in st.session_state:
             "Raw Affinity (Logit)": round(score_val, 4),
             "Sigmoid Probability": f"{prob_val * 100:.1f}%",
             "Status": status_badge,
-            "Source ID": p.get("target_source_id", "N/A"),
+            "Source ID": sid or "N/A",
         })
 
     df_preds_table = pd.DataFrame(table_data)
